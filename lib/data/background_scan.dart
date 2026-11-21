@@ -8,6 +8,7 @@ import '../domain/maps_resolver.dart';
 import '../domain/ocr.dart';
 import '../domain/photo_scan.dart';
 import '../domain/searcher.dart';
+import 'scanner_background.dart';
 import 'source_finder_io.dart';
 import 'sources.dart';
 import 'store.dart';
@@ -304,6 +305,13 @@ Future<bool> runBackgroundScan() async {
       } catch (_) {
         // Hand-over is retried by the next run.
       }
+    }
+    // The scanner's own sources are read here too, a few at a time, so a place
+    // جستجوگر ۲ found while the app was closed still reaches the archive.
+    try {
+      await runScannerBackground(store, client);
+    } catch (_) {
+      // A registry read never blocks the registered routes.
     }
     await store.setSetting('backgroundScanCursor', '${batch.nextCursor}');
     await store.setSetting(

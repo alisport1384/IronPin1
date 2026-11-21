@@ -16,7 +16,7 @@ import 'source_finder_io.dart';
 import 'sources.dart';
 import 'store.dart';
 import 'scanner_api.dart';
-import 'scanner_ingest.dart';
+import 'scanner_source_reader.dart';
 import 'app_logger.dart';
 
 class MarketController extends ChangeNotifier {
@@ -456,18 +456,135 @@ class MarketController extends ChangeNotifier {
   String scannerLastKnowledgeFetch = '';
   int scannerItemCount = 0, scannerSourceCount = 0;
 
-  /// Rows the ingested knowledge contributed to the archive. They are ordinary
-  /// rows, so this is what the prices, chart and range tabs actually read.
+  /// Rows the scanner's own sources contributed to the archive. They are
+  /// ordinary rows, so this is what the prices, chart and range tabs read.
   int scannerOfferCount = 0;
   List<String> scannerNewSources = const [];
   List<Map<String, Object?>> scannerTopics = const [];
 
+  /// The scanner's source registry, read by the app's own engine.
+  ///
+  /// The scanner's knowledge is prose, so it is not read as rows at all (see
+  /// `readSourceWithAppEngine`). What matters is *where* the scanner looked:
+  /// each of those places is read here exactly like a registered route, and a
+  /// page that is not a price list simply yields nothing.
+  List<SourceEndpoint> scannerSources = const [];
+
+  /// Where the rotating read of [scannerSources] continues.
+  int _scannerCursor = 0;
+
+  /// How much of the registry one *manual* refresh reads. A bounded slice on
+  /// purpose: the registry holds about a thousand places and a refresh must not
+  /// turn into a crawl, so the cursor advances and every place is reached over
+  /// the cycles. The background scan uses the same slice, spaced out.
+  static const int scannerSourcesPerRefresh = 10;
+
+  /// How much of the registry one automatic (background) refresh reads, so the
+  /// OS-scheduled pass stays short.
+  static const int scannerSourcesPerBackground = 4;
+
+  /// Upper bound of the registry the app keeps for itself.
+  static const int scannerSourcesMax = 400;
+
+  /// Builds the readable places of the scanner registry as app routes.
+  ///
+  /// [priority] orders them: a place the knowledge dump cited often is read
+  /// first, because that is the scanner's own evidence that prices live there.
+  /// Ordering only — nothing about a row is decided by it.
+  List<SourceEndpoint> _scannerEndpoints(ScannerSources sources,
+      [Map<String, int> priority = const {}]) {
+    final known = <String>{
+      for (final e in availableEndpoints) endpointCanonicalKey(e),
+    };
+    final list = <SourceEndpoint>[];
+    for (final s in sources.sources) {
+      if (!s.readable || list.length >= scannerSourcesMax) continue;
+      final parser = switch (s.kind) {
+        'telegram' => 'telegram',
+        'eitaa' => 'eitaa',
+        'bale' => 'bale',
+        'rubika' => 'rubika',
+        // `site-table` reads a table under its own heading, which is what a
+        // seller's website with no adapter of its own needs.
+        _ => 'site-table',
+      };
+      final name = (s.name == null || s.name!.isEmpty) ? s.domain : s.name!;
+      final e = SourceEndpoint(
+          'scanner-${s.url}', name, s.url, '', parser, 'نامشخص');
+      if (!known.add(endpointCanonicalKey(e))) continue;
+      list.add(e);
+    }
+    list.sort(
+        (a, b) => (priority[b.url] ?? 0).compareTo(priority[a.url] ?? 0));
+    return list;
+  }
+
+  /// Same places in the same order, so a re-read that changed nothing does not
+  /// reset the rotating cursor.
+  bool _sameRoutes(List<SourceEndpoint> a, List<SourceEndpoint> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].url != b[i].url) return false;
+    }
+    return true;
+  }
+
+  /// Reads the next bounded slice of [scannerSources] with the app's own
+  /// engine and stores what they really hold.
+  Future<void> _readScannerSources(DateTime now,
+      {required int windowDays, int? limit}) async {
+    final list = scannerSources;
+    if (list.isEmpty) return;
+    final per = limit ?? scannerSourcesPerRefresh;
+    final count =
+        per < list.length ? per : list.length;
+    final start = ((_scannerCursor % list.length) + list.length) % list.length;
+    var written = 0;
+    for (var i = 0; i < count; i++) {
+      if (disposed) return;
+      final e = list[(start + i) % list.length];
+      try {
+        final found = await readSourceWithAppEngine(
+            client, photoScanner, e,
+            now: now, windowDays: windowDays);
+        if (found.quotes.isEmpty) {
+          await AppLogger.instance.record('scanner_source', 'no_rows', {
+            'endpoint': e.id,
+            'noise': found.noise,
+            'outOfWindow': found.outOfWindow,
+          });
+        } else {
+          await store.saveSnapshot(e.id, found.quotes, replaceMissing: true);
+          written += found.quotes.length;
+          // The archive grew: the derived index and every confirmed answer of
+          // the old archive are void, exactly as after a source's own refresh.
+          _indexStale = true;
+          historyRevision++;
+          unawaited(_publishEndpoint(e.id).catchError((Object _) {}));
+        }
+      } catch (error, stack) {
+        // One unreadable place never stops the rest of the slice.
+        AppLogger.instance.capture(error, stack, section: 'scanner_source');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    }
+    _scannerCursor = (start + count) % list.length;
+    await store.setSetting('scanner.sourcesCursor', '$_scannerCursor');
+    if (written > 0) {
+      await AppLogger.instance.record(
+          'scanner_source', 'batch_saved', {'rows': written, 'sources': count});
+    }
+  }
+
   /// Reads the scanner registry and, when it is due, the whole knowledge dump.
   ///
   /// The registry (about 350 KB) is read on every refresh so links جستجوگر ۲
-  /// added since the last look are named. The knowledge dump is about 11 MB, so
-  /// it is read at most every 12 hours, or immediately when [force] is set.
-  Future<void> refreshScanner({bool force = false}) async {
+  /// added since the last look are named and read. The knowledge dump is about
+  /// 11 MB, so it is read at most every 12 hours, or immediately when [force] is
+  /// set — but it is read for its *sources* only: the dump itself is prose, and
+  /// turning prose into price rows is what produced the wrong product names,
+  /// the wrong amounts and the unknown units the user reported.
+  Future<void> refreshScanner({bool force = false, bool background = false}) async {
     if (scannerBusy || disposed || scannerServerless) return;
     scannerBusy = true;
     scannerError = '';
@@ -488,39 +605,44 @@ class MarketController extends ChangeNotifier {
       var changed = 0;
       if (due) {
         final knowledge = await scannerApi.knowledge();
+        // The dump's items stay what they are: the information tab's reading
+        // list. They are retrieved prose chunks, not offers, so none of them
+        // becomes a price row (that is what produced the wrong product names,
+        // the wrong amounts and the unknown units).
         changed = await store.scannerSaveItems(knowledge.priceItems, now);
         scannerLastKnowledgeFetch = now.toUtc().toIso8601String();
         await store.setSetting(
             'scanner.lastKnowledgeFetch', scannerLastKnowledgeFetch);
-        final dumpVersion = knowledge.generatedAt;
-        // A dump with no version of its own is never "the same": without a
-        // version there is nothing to compare, so it is read again.
-        final sameDump = dumpVersion.isNotEmpty &&
-            dumpVersion == await store.setting('scanner.knowledgeVersion');
-        await store.setSetting('scanner.knowledgeVersion', dumpVersion);
-        // The knowledge becomes archive rows, not just a list to read: the
-        // prices, chart and range tabs read rows, and the range product list
-        // and its index are built from them. Without this step the dump only
-        // filled the information tab.
-        final ingested = sameDump
-            ? await store.activeEndpointCount(ScannerIngest.endpoint)
-            // A new dump is always ingested with the window the tabs read, so
-            // what this read leaves out is what the tabs would hide anyway.
-            : await ScannerIngest(store)
-                .ingest(knowledge, now: now, windowDays: pricesWindow);
-        if (ingested > 0) {
-          // The archive grew: the derived index and every confirmed answer of
-          // the old archive are void, exactly as after a source's own refresh.
-          _indexStale = true;
-          historyRevision++;
-          unawaited(_publishEndpoint(ScannerIngest.endpoint)
-              .catchError((Object _) {}));
+        await store.setSetting(
+            'scanner.knowledgeVersion', knowledge.generatedAt);
+        // What the dump is good for: where prices were actually found. Those
+        // places become routes and are read by the app's own engine, so a row
+        // comes from the page itself and carries the product, amount, unit,
+        // date, city and address the page really says.
+        final routes = _scannerEndpoints(sources,
+            {for (final i in knowledge.priceItems) i.url: 1});
+        if (!_sameRoutes(routes, scannerSources)) {
+          scannerSources = routes;
+          _scannerCursor = 0;
+          await store.setSetting('scanner.sourcesCursor', '0');
         }
-        await AppLogger.instance.record('scanner', 'knowledge_ingested', {
-          'rows': ingested,
+        await AppLogger.instance.record('scanner', 'knowledge_read', {
           'items': knowledge.priceItems.length,
-          'sameDump': sameDump,
+          'routes': scannerSources.length,
         });
+      }
+      // The registry alone is enough to keep reading: جستجوگر ۲ may have found
+      // new places even when the dump itself is not due.
+      if (scannerSources.isEmpty && sources.sources.isNotEmpty) {
+        scannerSources = _scannerEndpoints(sources);
+      }
+      _scannerCursor =
+          int.tryParse(await store.setting('scanner.sourcesCursor') ?? '') ??
+              _scannerCursor;
+      if (scannerSources.isNotEmpty) {
+        await _readScannerSources(now,
+            windowDays: pricesWindow,
+            limit: background ? scannerSourcesPerBackground : null);
       }
       await AppLogger.instance.record('scanner', 'fetch_complete', {
         'sources': sources.sources.length,
@@ -546,8 +668,7 @@ class MarketController extends ChangeNotifier {
     scannerItemCount = await store.scannerItemCount();
     scannerSourceCount = await store.scannerSourceCount();
     scannerTopics = await store.scannerTopics();
-    scannerOfferCount =
-        await store.activeEndpointCount(ScannerIngest.endpoint);
+    scannerOfferCount = await store.scannerEndpointRowCount();
   }
 
   /// «اسکن بدون سرور»: when on, nothing is read from the scanner server and the

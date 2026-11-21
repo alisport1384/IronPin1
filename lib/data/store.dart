@@ -8,7 +8,9 @@ import 'package:shamsi_date/shamsi_date.dart';
 import 'package:sqflite/sqflite.dart';
 import '../domain/market.dart';
 import '../domain/row_facts.dart';
+import '../domain/source_finder.dart';
 import 'scanner_api.dart';
+import 'sources.dart';
 
 /// Derived, payload-addressed index of the local archive (schema 5).
 ///
@@ -1180,6 +1182,43 @@ class MarketStore {
     await db.update('latest', {'active': 0},
         where: 'endpoint=? AND active=1', whereArgs: [endpoint]);
   }
+
+  /// The scanner's readable sources as app routes, so a background pass can
+  /// keep reading them while the app is closed.
+  Future<List<SourceEndpoint>> scannerRoutes() async {
+    final rows = await db.query('scanner_sources',
+        where: 'readable=1', orderBy: 'rowid');
+    final list = <SourceEndpoint>[];
+    final seen = <String>{};
+    for (final r in rows) {
+      final url = '${r['url'] ?? ''}';
+      if (url.isEmpty) continue;
+      final kind = '${r['kind'] ?? 'site'}';
+      final parser = switch (kind) {
+        'telegram' => 'telegram',
+        'eitaa' => 'eitaa',
+        'bale' => 'bale',
+        'rubika' => 'rubika',
+        _ => 'site-table',
+      };
+      final name = (r['name'] as String?)?.trim();
+      final e = SourceEndpoint('scanner-$url',
+          name == null || name.isEmpty ? '${r['domain'] ?? url}' : name,
+          url, '', parser, 'نامشخص');
+      // The registry holds about a thousand places and repeats sellers; a page
+      // already read is not read twice.
+      if (!seen.add(canonicalUrlKey(url))) continue;
+      list.add(e);
+    }
+    return list;
+  }
+
+  /// Rows the app read from the scanner's own sources. They are ordinary rows,
+  /// so this is what the prices, chart and range tabs read.
+  Future<int> scannerEndpointRowCount() async => Sqflite.firstIntValue(
+          await db.rawQuery(
+              "SELECT COUNT(*) FROM latest WHERE active=1 AND endpoint LIKE 'scanner-%'")) ??
+      0;
 
   /// Writes only what changed since the last fetch. The whole dump is read to
   /// know that, but a row is rewritten only when its text is new or different.
