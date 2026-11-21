@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../domain/market.dart';
+
 /// اسکنر آنلاین پایگاه دانش قیمت آهن.
 ///
 /// The scanner publishes three stable endpoints and one human page:
@@ -18,6 +20,11 @@ class ScannerApi {
   static const String baseUrl = 'https://qwen.alisport0.qzz.io';
   static const String sourcesEndpoint = '$baseUrl/api/sources';
   static const String knowledgeEndpoint = '$baseUrl/api/report/all';
+
+  /// The scanner's own extraction, in the app's own `Quote` shape
+  /// (`ironpin-quotes-v1`). Optional: a scanner without it answers 404 and the
+  /// app simply keeps its own sources.
+  static const String quotesEndpoint = '$baseUrl/api/ironpin';
 
   /// The single link that puts every extracted item in one place.
   static const String allKnowledgePage = '$baseUrl/report/all';
@@ -52,6 +59,30 @@ class ScannerApi {
     return ScannerKnowledge.fromJson(
         jsonDecode(utf8.decode(r.bodyBytes, allowMalformed: true))
             as Map<String, dynamic>);
+  }
+
+  /// The scanner's quotes (`ironpin-quotes-v1`), when it publishes them.
+  ///
+  /// `null` is a normal answer — a scanner without the endpoint (404) or with a
+  /// malformed body — so the refresh is never broken by it.
+  Future<ScannerQuotes?> quotes() async {
+    try {
+      final r = await client.get(Uri.parse(quotesEndpoint), headers: {
+        'User-Agent': 'IronPin/0.9 (public knowledge reader)',
+        'Accept': 'application/json',
+      }).timeout(const Duration(seconds: 120));
+      if (r.statusCode == 404) return null;
+      if (r.statusCode != 200) {
+        throw ScannerException('HTTP ${r.statusCode} در ردیف‌های اسکنر');
+      }
+      return ScannerQuotes.fromJson(
+          jsonDecode(utf8.decode(r.bodyBytes, allowMalformed: true))
+              as Map<String, dynamic>);
+    } on ScannerException {
+      rethrow;
+    } catch (_) {
+      return null;
+    }
   }
 
   void close() => client.close();
@@ -238,6 +269,34 @@ class ScannerKnowledge {
   /// kept, so the archive never grows with unrelated extraction.
   List<ScannerItem> get priceItems =>
       items.where((i) => i.attribute == 'price').toList(growable: false);
+}
+
+/// The scanner's extraction, already in the app's own [Quote] shape.
+///
+/// Reading it needs no re-interpretation: the scanner says what it found and
+/// the app keeps it — or refuses it, when it is not an offer (see
+/// `ScannerQuotesIngest`). Keeping the app's own shape is what makes the two
+/// sides agree about what a row is.
+class ScannerQuotes {
+  final String format, generatedAt;
+  final int count;
+  final List<Quote> quotes;
+  const ScannerQuotes({
+    required this.format,
+    required this.generatedAt,
+    required this.count,
+    required this.quotes,
+  });
+
+  factory ScannerQuotes.fromJson(Map<String, dynamic> j) => ScannerQuotes(
+        format: '${j['format'] ?? ''}',
+        generatedAt: '${j['generated_at'] ?? ''}',
+        count: (j['count'] as num?)?.toInt() ?? 0,
+        quotes: [
+          for (final e in (j['quotes'] as List? ?? []))
+            Quote.fromJson(Map<String, dynamic>.from(e as Map))
+        ],
+      );
 }
 
 DateTime _ms(Object? value) {

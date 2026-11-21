@@ -16,6 +16,7 @@ import 'source_finder_io.dart';
 import 'sources.dart';
 import 'store.dart';
 import 'scanner_api.dart';
+import 'scanner_quotes.dart';
 import 'scanner_source_reader.dart';
 import 'app_logger.dart';
 
@@ -629,6 +630,24 @@ class MarketController extends ChangeNotifier {
         await AppLogger.instance.record('scanner', 'knowledge_read', {
           'items': knowledge.priceItems.length,
           'routes': scannerSources.length,
+        });
+      }
+      // The scanner's own extraction, when it publishes it. It is already in
+      // the app's `Quote` shape, so nothing is re-interpreted: the app keeps the
+      // offers and refuses the prose (see `ScannerQuotesIngest`). A scanner
+      // without the endpoint answers 404 and the app keeps its own sources.
+      final quotes = await scannerApi.quotes();
+      if (quotes != null && quotes.quotes.isNotEmpty) {
+        final result = await ScannerQuotesIngest(store).ingest(quotes, now);
+        if (result.written > 0) {
+          _indexStale = true;
+          historyRevision++;
+          unawaited(_publishEndpoint(ScannerQuotesIngest.endpoint)
+              .catchError((Object _) {}));
+        }
+        await AppLogger.instance.record('scanner', 'quotes_ingested', {
+          'rows': result.written,
+          'refused': result.refused,
         });
       }
       // The registry alone is enough to keep reading: جستجوگر ۲ may have found
