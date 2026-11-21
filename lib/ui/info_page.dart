@@ -23,7 +23,7 @@ class _InfoPageState extends State<InfoPage> {
     setState(() => exporting = true);
     try {
       final destination = await AppLogger.instance.export(summary: {
-        'version': '0.9.6',
+        'version': '0.9.14',
         'windowDays': widget.c.discoveryDays,
         'pricesWindow': widget.c.pricesWindow,
         'rangeWindow': widget.c.rangeWindow,
@@ -549,9 +549,9 @@ class _InfoPageState extends State<InfoPage> {
           onPressed: () => showLicensePage(
               context: context,
               applicationName: 'IronPin',
-              applicationVersion: '0.9.6'),
+              applicationVersion: '0.9.14'),
           child: const Text('مجوزهای نرم‌افزار و داده')),
-      const Text('IronPin 0.9.6 • تحلیل محلی • پژوهش: ۱۶ آبان ۱۴۰۵',
+      const Text('IronPin 0.9.14 • تحلیل محلی • پژوهش: ۱۶ آبان ۱۴۰۵',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 11, color: muted)),
       const SizedBox(height: 18),

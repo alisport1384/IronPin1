@@ -206,6 +206,9 @@ Future<bool> runBackgroundScan() async {
   try {
     store = await MarketStore.open();
     if (await store.setting('autoRefresh') != 'true') return true;
+    // «اسکن بدون سرور»: the background pass must not fetch either. It stops
+    // here, before the queue is built, so no source is read.
+    if (await store.setting('scanner.serverless') == 'true') return true;
     final rawEnabled = await store.setting('enabled');
     final enabledIds = rawEnabled == null
         ? endpoints.map((e) => e.id).toSet()

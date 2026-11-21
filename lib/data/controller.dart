@@ -378,6 +378,10 @@ class MarketController extends ChangeNotifier {
   /// attempted). The button shows it, so a blocked refresh is never silent.
   String refreshBlockedReason = '';
 
+  /// What the last refresh did when it ran but stayed off the network, so the
+  /// button can say «بدون سرور» instead of a plain «نوسازی انجام شد».
+  String refreshNote = '';
+
   /// When the archive last finished a refresh, read from the archive itself so
   /// it survives restarts and is the same in the foreground and background.
   DateTime? lastRefreshAt;
@@ -445,7 +449,6 @@ class MarketController extends ChangeNotifier {
   // off by default and the knowledge is read from the server on a refresh;
   // «اسکن بدون سرور» is the opt-in that stops that read and leaves the app on
   // its own local data.
-  final ScannerApi scannerApi = ScannerApi();
   bool scannerServerless = false;
   bool scannerBusy = false;
   String scannerError = '';
@@ -606,8 +609,16 @@ class MarketController extends ChangeNotifier {
   bool transferring = false;
   final Map<String, int> endpointRevisions = {};
   int historyEpoch = 0;
-  MarketController(this.store, {SourceClient? client, PhotoScanner? photoScanner})
+  /// Reads the public scanner database. Injectable so a test can stand in for
+  /// the network instead of reaching the real server.
+  final ScannerApi scannerApi;
+
+  MarketController(this.store,
+      {SourceClient? client,
+      PhotoScanner? photoScanner,
+      ScannerApi? scannerApi})
       : client = client ?? SourceClient(),
+        scannerApi = scannerApi ?? ScannerApi(),
         photoScanner = photoScanner ?? PhotoScanner(
             client: (client ?? SourceClient()).client,
             engine: OcrEngine.platform());
@@ -1567,6 +1578,7 @@ class MarketController extends ChangeNotifier {
 
   Future<void> refresh() async {
     refreshBlockedReason = '';
+    refreshNote = '';
     if (busy || transferring || disposed) {
       refreshBlockedReason = busy ? 'نوسازی همین حالا در حال اجراست.' : '';
       _notify();
@@ -1785,6 +1797,24 @@ class MarketController extends ChangeNotifier {
     }
 
     try {
+      // «اسکن بدون سرور»: the button must not reach the network at all. It
+      // used to skip only the scanner server and still search every local
+      // source, so turning the key on changed nothing the user could see. Now
+      // the whole fetch is skipped — no local source and no scanner server —
+      // and the archive on this phone is re-read instead. `lastRefresh` is
+      // left alone because nothing was fetched. This stays inside the try so
+      // the refresh lock is released and `busy` cleared below.
+      if (scannerServerless) {
+        await reload();
+        await AppLogger.instance.record('network', 'refresh_local_only', {
+          'sources': enabled.length,
+          'cachedRows': quotes.length,
+        });
+        refreshNote = 'نوسازی بدون سرور: از شبکه چیزی خوانده نشد؛ '
+            'فقط دادهٔ همین گوشی خوانده شد.';
+        _notify();
+        return;
+      }
       // A direct refresh before init must preserve untouched cached sources too.
       if (!_quotesLoaded) await reload();
       await AppLogger.instance.checkpoint('refresh_fetch', rows: quotes.length);

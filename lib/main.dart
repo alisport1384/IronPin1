@@ -287,7 +287,9 @@ class _MarketHomeState extends State<MarketHome> with WidgetsBindingObserver {
                         : () async {
                             await c.refresh();
                             if (!context.mounted) return;
-                            final reason = c.refreshBlockedReason;
+                            final reason = c.refreshBlockedReason.isNotEmpty
+                                ? c.refreshBlockedReason
+                                : c.refreshNote;
                             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                                 duration: const Duration(seconds: 5),
                                 content: Text(reason.isEmpty

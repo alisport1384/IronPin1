@@ -58,6 +58,21 @@ cp build/app/outputs/flutter-apk/app-release.apk \
 خروجی‌های تحویلی در `releases/` و با همین نام‌ها هستند؛ `.apk` در گیت ignore است و فقط
 فایل `SHA256SUMS` کامیت می‌شود.
 
+### تحویل ۰.۹.۱۴ — ۲۹ آبان ۱۴۰۵ (هر دو معماری)
+
+| فایل | معماری | حجم | sha256 |
+| --- | --- | ---: | --- |
+| `IronPin-0.9.14-armeabi-v7a-release.apk` | ۳۲ بیتی (`armeabi-v7a`) | ۱۴٫۰MB (۱۴٬۰۱۲٬۲۱۷ بایت) | `0065e957b434e62fade4b7a0055fa8b6a1b8a64c59e5266f2605f98f74a5f258` |
+| `IronPin-0.9.14-arm64-v8a-release.apk` | ۶۴ بیتی (`arm64-v8a`) | ۱۴٫۶MB (۱۴٬۶۲۰٬۲۵۲ بایت) | `026c76a15db441aa6b22aa92ddb3bc49956ccd468ef44d8ec84012a847f0e4e2` |
+
+`versionName='0.9.14'`، `versionCode='36'`، `minSdk=21`، `targetSdk=35`؛ هر فایل فقط
+کتابخانهٔ معماری خودش را دارد و `assets/tessdata/{fas,eng}.traineddata` و
+`libtesseract.so` همراهش است. تحویل محلی با کلید `tool/sign_env.sh` امضا شده و
+گواهی SHA-256 هر دو فایل یکی است:
+`9856986647c9379e1a4b0f476d9f1b05e5e0786d5c48c68e0d0ee9092aaee7e6`.
+اگر secretهای `IRONPIN_*` روی مخزن نباشند، بیلد CI با کلید debug امضا می‌شود و
+یادداشت ریلیز گواهی همان اجرا را می‌نویسد.
+
 ### تحویل ۰.۹.۹ — ۲۵ آبان ۱۴۰۵ (هر دو معماری از GitHub Actions، با یک کلید)
 
 | فایل | معماری | حجم | sha256 |
