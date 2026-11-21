@@ -20,18 +20,23 @@ import 'common.dart';
 /// raw extracted text of a row that has no number at all. Zero is not a price:
 /// sources that publish «۰ تومان» mean "I have no price", so every step treats
 /// a non-positive amount as absent and the row reads «بدون قیمت» instead.
-String candidatePriceText(CatalogueItem p) => candidatePriceTextOf(p.example);
+String candidatePriceText(CatalogueItem p, {double factor = 1}) =>
+    candidatePriceTextOf(p.example, factor: factor);
 
-String candidatePriceTextOf(Quote q) {
+String candidatePriceTextOf(Quote q, {double factor = 1}) {
   final basis = rangeBasis(q);
   final comparable = q.tomanFor(basis);
   if (comparable != null && comparable > 0) {
-    return '${fmt(comparable)} تومان / ${q.unitName(basis)}';
+    return '${fmt(comparable * factor)} تومان / ${q.unitName(basis)}';
   }
   final own = q.tomanFor('original');
-  if (own != null && own > 0) return '${fmt(own)} تومان • واحد نامشخص';
+  if (own != null && own > 0) {
+    return '${fmt(own * factor)} تومان • واحد نامشخص';
+  }
   final amount = q.amount;
-  if (amount != null && amount > 0) return '${fmt(amount)} ${faDigits(q.currency)}';
+  if (amount != null && amount > 0) {
+    return '${fmt(amount * factor)} ${faDigits(q.currency)}';
+  }
   return faDigits(q.details['مبلغ استخراج‌شده'] ?? 'بدون قیمت');
 }
 
@@ -127,7 +132,9 @@ class _RangePageState extends State<RangePage> {
               constraints: const BoxConstraints(maxWidth: 180),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Flexible(
-                  child: Text(candidatePriceText(p),
+                  child: Text(
+                      candidatePriceText(p,
+                          factor: widget.c.priceSurchargeFactor),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -406,6 +413,7 @@ class _RangePageState extends State<RangePage> {
         unawaited(widget.c.setTabDays('range', v));
         if (mounted) setState(invalidate);
       }, inherit: true, inherited: widget.c.discoveryDays),
+      SurchargeControl(c: widget.c),
       if (family == null) ...[
         const Text('انتخاب نوع محصول',
             style: TextStyle(fontWeight: FontWeight.bold)),
@@ -505,7 +513,7 @@ class _RangePageState extends State<RangePage> {
                               style: TextStyle(
                                   fontWeight: FontWeight.bold, fontSize: 15)),
                           Text(
-                              '${fmt(entry.range.rate(mode), decimals: mode == 'mean' ? 0 : 2)} تومان / ${entry.range.example.unitName(entry.range.basis)}',
+                              '${fmt(entry.range.rate(mode) * widget.c.priceSurchargeFactor, decimals: mode == 'mean' ? 0 : 2)} تومان / ${entry.range.example.unitName(entry.range.basis)}',
                               style: const TextStyle(
                                   fontSize: 21,
                                   fontWeight: FontWeight.bold,
@@ -513,11 +521,11 @@ class _RangePageState extends State<RangePage> {
                           // The product's three indicators, each taken from
                           // this product's own rows only.
                           Text(
-                              'میانگین: ${fmt(entry.range.mean)} تومان / ${entry.range.example.unitName(entry.range.basis)}'),
+                              'میانگین: ${fmt(entry.range.mean * widget.c.priceSurchargeFactor)} تومان / ${entry.range.example.unitName(entry.range.basis)}'),
                           Text(
-                              'بالاترین: ${fmt(entry.range.maximum, decimals: 2)} تومان / ${entry.range.example.unitName(entry.range.basis)}'),
+                              'بالاترین: ${fmt(entry.range.maximum * widget.c.priceSurchargeFactor, decimals: 2)} تومان / ${entry.range.example.unitName(entry.range.basis)}'),
                           Text(
-                              'پایین‌ترین: ${fmt(entry.range.minimum, decimals: 2)} تومان / ${entry.range.example.unitName(entry.range.basis)}'),
+                              'پایین‌ترین: ${fmt(entry.range.minimum * widget.c.priceSurchargeFactor, decimals: 2)} تومان / ${entry.range.example.unitName(entry.range.basis)}'),
                           ExpansionTile(
                               title: Text(
                                   'محاسبه هزینه • ${entry.range.example.unitName(entry.range.basis)}'),
@@ -526,7 +534,8 @@ class _RangePageState extends State<RangePage> {
                                     key: ValueKey(
                                         '${entry.range.key}:$mode:${result!.at}'),
                                     range: entry.range,
-                                    rate: entry.range.rate(mode),
+                                    rate: entry.range.rate(mode) *
+                                        widget.c.priceSurchargeFactor,
                                     allowGeometry: false)
                               ]),
                           // The section sits above its button on purpose: when

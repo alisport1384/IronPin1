@@ -99,6 +99,8 @@ void main() {
     final button = find.text('محاسبه');
     await t.scrollUntilVisible(button, 500,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(button);
+    await t.pumpAndSettle();
     await t.tap(button);
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('وزن کل برآوردی'), 300,
@@ -178,6 +180,8 @@ void main() {
     final calculate = find.text('محاسبه');
     await t.scrollUntilVisible(calculate, 400,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(calculate);
+    await t.pumpAndSettle();
     await t.tap(calculate);
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('۳۱٫۴۰۰ کیلوگرم'), 250,
@@ -199,6 +203,8 @@ void main() {
     final calculate = find.text('محاسبه');
     await t.scrollUntilVisible(calculate, 400,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(calculate);
+    await t.pumpAndSettle();
     await t.tap(calculate);
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('۱۵۵٫۰۰۰ کیلوگرم'), 250,
@@ -229,6 +235,8 @@ void main() {
     await t.scrollUntilVisible(
         find.byType(DropdownButtonFormField<String>), 150,
         scrollable: find.byType(Scrollable).first, maxScrolls: 30);
+    await t.ensureVisible(find.text('همه پیام‌رسان‌ها'));
+    await t.pumpAndSettle();
     await t.tap(find.text('همه پیام‌رسان‌ها'));
     await t.pumpAndSettle();
     await t.tap(find.text('ایتا').last);
@@ -323,6 +331,8 @@ void main() {
     expect(find.text('شاهد مستقل ردیف'), findsNothing);
     await t.scrollUntilVisible(find.text('جزئیات بیشتر'), 100,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('جزئیات بیشتر'));
+    await t.pumpAndSettle();
     await t.tap(find.text('جزئیات بیشتر'));
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('شاهد مستقل ردیف'), 200,
@@ -339,8 +349,16 @@ void main() {
       (t) async {
     await t.pumpWidget(MaterialApp(home: Scaffold(body: InfoPage(c: c))));
     await t.pumpAndSettle();
-    await t.scrollUntilVisible(find.text(endpoints.first.name), 200,
+    // The route cards are a closed section of the page; open it first.
+    final listTile = find.textContaining('فهرست منابع');
+    await t.scrollUntilVisible(listTile, 200,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(listTile);
+    await t.pumpAndSettle();
+    await t.tap(listTile);
+    await t.pumpAndSettle();
+    await t.ensureVisible(find.text(endpoints.first.name));
+    await t.pumpAndSettle();
     expect(find.text('هنوز آزموده نشده'), findsNothing);
     await t.tap(find.text(endpoints.first.name));
     await t.pumpAndSettle();

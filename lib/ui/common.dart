@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../data/app_logger.dart';
+import '../data/controller.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../domain/market.dart';
 
@@ -191,3 +192,88 @@ Widget selectField(String label, String value, Map<String, String> options,
         });
 String sourceDay(Quote q) =>
     q.sourceDateRaw.isEmpty ? 'تاریخ نرخ نامشخص' : q.sourceDateRaw;
+
+/// گزینهٔ «x درصد اضافه» در تب قیمت و تب رنج.
+///
+/// Off by default: a fresh install shows exactly the announced prices. The value
+/// is adjustable and only 0..100 is accepted. The default is Iran's VAT of 1405
+/// (10%); road freight there is charged per ton-kilometre and has no fixed
+/// percentage, so it is not part of the number.
+class SurchargeControl extends StatefulWidget {
+  final MarketController c;
+  const SurchargeControl({super.key, required this.c});
+
+  @override
+  State<SurchargeControl> createState() => _SurchargeControlState();
+}
+
+class _SurchargeControlState extends State<SurchargeControl> {
+  late final TextEditingController _text;
+
+  @override
+  void initState() {
+    super.initState();
+    _text = TextEditingController(text: _label(widget.c.priceSurchargePercent));
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  static String _label(double v) =>
+      v == v.roundToDouble() ? '${v.round()}' : '$v';
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.c;
+    return Card(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('درصد اضافه قیمت',
+                          style: TextStyle(fontSize: 12)),
+                      subtitle: const Text(
+                          'پیش‌فرض خاموش؛ فقط روی نمایش قیمت‌ها اثر دارد و خود نرخ اعلامی را تغییر نمی‌دهد',
+                          style: TextStyle(fontSize: 11)),
+                      value: c.priceSurchargeEnabled,
+                      onChanged: (v) async {
+                        await c.setPriceSurchargeEnabled(v);
+                        if (mounted) setState(() {});
+                      }),
+                  Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Row(children: [
+                        Expanded(
+                            child: TextField(
+                                controller: _text,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                    labelText: 'درصد اضافه (۰ تا ۱۰۰)',
+                                    isDense: true),
+                                onChanged: (v) {
+                                  final n =
+                                      double.tryParse(v.replaceAll('٫', '.'));
+                                  if (n != null) c.setPriceSurchargePercent(n);
+                                })),
+                        const SizedBox(width: 10),
+                        Text(
+                            'ضریب: ${fmt(c.priceSurchargeFactor, decimals: 2)}',
+                            style: const TextStyle(
+                                fontSize: 11, color: muted))
+                      ])),
+                  const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                          'پیش‌فرض ۱۰٪ = مالیات بر ارزش افزودهٔ ۱۴۰۵؛ کرایهٔ حمل بر مبنای تن-کیلومتر است و درصد ثابتی ندارد.',
+                          style: TextStyle(
+                              fontSize: 10, color: muted, height: 1.7)))
+                ])));
+  }
+}

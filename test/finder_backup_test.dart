@@ -100,6 +100,9 @@ void main() {
     final sourceCtrl = MarketController(source, client: noNet);
     final targetCtrl = MarketController(target, client: noNet);
     try {
+      // «اسکن جستجوگر۲ در اطلاعات» is off by default now; this target phone had
+      // turned it on, which is what the import is expected to switch back off.
+      await target.setSetting('finder.enabled', 'true');
       await sourceCtrl.init();
       await targetCtrl.init();
 

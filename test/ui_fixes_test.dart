@@ -120,6 +120,8 @@ void main() {
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     for (var i = 0; i < 120; i++) {
       await t.runAsync(

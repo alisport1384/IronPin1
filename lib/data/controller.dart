@@ -15,6 +15,7 @@ import 'background_scan.dart';
 import 'source_finder_io.dart';
 import 'sources.dart';
 import 'store.dart';
+import 'scanner_api.dart';
 import 'app_logger.dart';
 
 class MarketController extends ChangeNotifier {
@@ -407,6 +408,118 @@ class MarketController extends ChangeNotifier {
   int get chartWindow => chartDays >= 0 ? chartDays : discoveryDays;
 
   bool loggingEnabled = false;
+
+  // --- درصد اضافه قیمت (تب قیمت و تب رنج) ---------------------------------
+  //
+  // Off by default: a fresh install shows exactly the announced prices. The
+  // default value is Iran's VAT of 1405 (10%); road freight there is charged
+  // per ton-kilometre and has no fixed percentage, so the number is adjustable
+  // rather than baked in.
+  bool priceSurchargeEnabled = false;
+  double priceSurchargePercent = 10;
+
+  double get priceSurchargeFactor =>
+      priceSurchargeEnabled ? 1 + priceSurchargePercent / 100 : 1;
+
+  double withPriceSurcharge(num value) => value * priceSurchargeFactor;
+
+  Future<void> setPriceSurchargeEnabled(bool value) async {
+    priceSurchargeEnabled = value;
+    await store.setSetting('surchargeEnabled', '$value');
+    _notify();
+  }
+
+  /// Only 0..100 is accepted, so a typo cannot multiply every price.
+  Future<void> setPriceSurchargePercent(num value) async {
+    final v = value.toDouble();
+    if (!v.isFinite || v < 0 || v > 100) return;
+    priceSurchargePercent = v;
+    await store.setSetting('surchargePercent', '$v');
+    _notify();
+  }
+
+  // --- online scanner (پایگاه دانش قیمت آهن) -------------------------------
+  //
+  // The scanner is a public database: it discovers sources with جستجوگر ۲ and
+  // publishes the extracted knowledge. The app only reads it. Both switches are
+  // off by default and the knowledge is read from the server on a refresh;
+  // «اسکن بدون سرور» is the opt-in that stops that read and leaves the app on
+  // its own local data.
+  final ScannerApi scannerApi = ScannerApi();
+  bool scannerServerless = false;
+  bool scannerBusy = false;
+  String scannerError = '';
+  String scannerLastKnowledgeFetch = '';
+  int scannerItemCount = 0, scannerSourceCount = 0;
+  List<String> scannerNewSources = const [];
+  List<Map<String, Object?>> scannerTopics = const [];
+
+  /// Reads the scanner registry and, when it is due, the whole knowledge dump.
+  ///
+  /// The registry (about 350 KB) is read on every refresh so links جستجوگر ۲
+  /// added since the last look are named. The knowledge dump is about 11 MB, so
+  /// it is read at most every 12 hours, or immediately when [force] is set.
+  Future<void> refreshScanner({bool force = false}) async {
+    if (scannerBusy || disposed || scannerServerless) return;
+    scannerBusy = true;
+    scannerError = '';
+    _notify();
+    final now = DateTime.now();
+    try {
+      final sources = await scannerApi.sources();
+      final fresh = await store.scannerSaveSources(sources.sources, now);
+      scannerNewSources = fresh;
+      await store.setSetting('scanner.newSources', jsonEncode(fresh));
+      await store.setSetting('scanner.sourcesStamp', sources.generatedAt);
+      final last = DateTime.tryParse(
+              await store.setting('scanner.lastKnowledgeFetch') ?? '')
+          ?.toLocal();
+      final due = force ||
+          last == null ||
+          now.difference(last).inHours >= scannerKnowledgeIntervalHours;
+      var changed = 0;
+      if (due) {
+        final knowledge = await scannerApi.knowledge();
+        changed = await store.scannerSaveItems(knowledge.priceItems, now);
+        scannerLastKnowledgeFetch = now.toUtc().toIso8601String();
+        await store.setSetting(
+            'scanner.lastKnowledgeFetch', scannerLastKnowledgeFetch);
+      }
+      await AppLogger.instance.record('scanner', 'fetch_complete', {
+        'sources': sources.sources.length,
+        'newSources': fresh.length,
+        'itemsChanged': changed,
+        'knowledge': due,
+      });
+    } catch (error, stack) {
+      scannerError = error is ScannerException
+          ? error.message
+          : 'دریافت از اسکنر ناموفق بود.';
+      AppLogger.instance.capture(error, stack, section: 'scanner');
+    } finally {
+      await reloadScannerStats();
+      scannerBusy = false;
+      _notify();
+    }
+  }
+
+  static const scannerKnowledgeIntervalHours = 12;
+
+  Future<void> reloadScannerStats() async {
+    scannerItemCount = await store.scannerItemCount();
+    scannerSourceCount = await store.scannerSourceCount();
+    scannerTopics = await store.scannerTopics();
+  }
+
+  /// «اسکن بدون سرور»: when on, nothing is read from the scanner server and the
+  /// app stays on its own local archive.
+  Future<void> setScannerServerless(bool value) async {
+    scannerServerless = value;
+    await store.setSetting('scanner.serverless', '$value');
+    if (!value) unawaited(refreshScanner());
+    _notify();
+  }
+
   Future<void> setCity(String city) async {
     // A different city is a different query; derived answers never cross it.
     rangeSession.invalidate();
@@ -547,6 +660,11 @@ class MarketController extends ChangeNotifier {
       'lastRefresh',
       'lastBackgroundScan',
       'lastBackgroundScanCount',
+      'scanner.serverless',
+      'scanner.newSources',
+      'scanner.lastKnowledgeFetch',
+      'surchargeEnabled',
+      'surchargePercent',
     ]);
     filter.city = cfg['selectedCity'] ?? '';
     filter.cityKind = 'all';
@@ -577,11 +695,31 @@ class MarketController extends ChangeNotifier {
         AppLogger.instance.capture(error, stack, section: 'discovery');
       }
     }
+    // «اسکن جستجوگر۲ در اطلاعات» is off by default: the local source discovery
+    // only runs when the user turns it on. An install that explicitly turned it
+    // on keeps it on.
     final finderEnabledRaw = cfg['finder.enabled'];
-    finderEnabled = finderEnabledRaw != 'false';
+    finderEnabled = finderEnabledRaw == 'true';
     if (finderEnabledRaw == null) {
       await store.setSetting('finder.enabled', '$finderEnabled');
     }
+    priceSurchargeEnabled = cfg['surchargeEnabled'] == 'true';
+    final surchargePercent = double.tryParse(cfg['surchargePercent'] ?? '');
+    if (surchargePercent != null &&
+        surchargePercent.isFinite &&
+        surchargePercent >= 0 &&
+        surchargePercent <= 100) {
+      priceSurchargePercent = surchargePercent;
+    }
+    scannerServerless = cfg['scanner.serverless'] == 'true';
+    scannerLastKnowledgeFetch = cfg['scanner.lastKnowledgeFetch'] ?? '';
+    try {
+      scannerNewSources =
+          (jsonDecode(cfg['scanner.newSources'] ?? '[]') as List).cast<String>();
+    } catch (_) {
+      scannerNewSources = const [];
+    }
+    await reloadScannerStats();
     try {
       await finder.registerKnownEndpoints(discoveredSources);
       await finder.load(force: true);
@@ -1650,6 +1788,10 @@ class MarketController extends ChangeNotifier {
       // A direct refresh before init must preserve untouched cached sources too.
       if (!_quotesLoaded) await reload();
       await AppLogger.instance.checkpoint('refresh_fetch', rows: quotes.length);
+      // The scanner registry is read with every refresh (it is how new links
+      // جستجوگر ۲ discovered are noticed); the large knowledge dump is read
+      // only when it is due, so a refresh is not held up by it.
+      unawaited(refreshScanner());
       await Future.wait([worker(), worker()]);
       await AppLogger.instance
           .checkpoint('refresh_sources_saved', rows: quotes.length);
@@ -1739,6 +1881,7 @@ class MarketController extends ChangeNotifier {
     rangeSession.invalidate();
     RangeWorker.shared.dispose();
     client.close();
+    scannerApi.close();
     super.dispose();
   }
 }

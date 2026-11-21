@@ -293,6 +293,8 @@ void main() {
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     await t.pump();
     // The first confirmation of this snapshot really computes.
@@ -328,6 +330,8 @@ void main() {
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     await _settle(t);
     await _scrollTo(t, find.text('۱۵۰ تومان / کیلوگرم'));
@@ -336,6 +340,8 @@ void main() {
     // answered from the previous unit.
     await t.scrollUntilVisible(find.text('همه واحدها؛ جداگانه'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('همه واحدها؛ جداگانه'));
+    await t.pumpAndSettle();
     await t.tap(find.text('همه واحدها؛ جداگانه'));
     await t.pumpAndSettle();
     await t.tap(find.text('تن').last);
@@ -363,6 +369,8 @@ void main() {
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     await _settle(t);
     await _scrollTo(t, find.text('۱۵۰ تومان / کیلوگرم'));
@@ -373,6 +381,8 @@ void main() {
     final before = c.rangeSession.computeRuns;
     await t.scrollUntilVisible(find.text('همه واحدها؛ جداگانه'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('همه واحدها؛ جداگانه'));
+    await t.pumpAndSettle();
     await t.tap(find.text('همه واحدها؛ جداگانه'));
     await t.pumpAndSettle();
     await t.tap(find.text('تن').last);

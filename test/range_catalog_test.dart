@@ -209,6 +209,8 @@ void main() {
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     // Real isolate and I/O time does not advance with the fake clock: wait
     // for the confirmed answer with bounded pumps instead of one fixed sleep.
@@ -265,6 +267,8 @@ void main() {
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     await t.pump();
     // Real isolate/I/O time does not advance with fake-clock pumpAndSettle.
@@ -296,6 +300,8 @@ void main() {
     for (var i = 0; i < 2; i++) {
       await t.scrollUntilVisible(find.text('نمایش ۴۰ اعلام بعدی'), 700,
           scrollable: find.byType(Scrollable).first, maxScrolls: 80);
+      await t.ensureVisible(find.text('نمایش ۴۰ اعلام بعدی'));
+      await t.pumpAndSettle();
       await t.tap(find.text('نمایش ۴۰ اعلام بعدی'));
       await t.pumpAndSettle();
     }
@@ -333,6 +339,8 @@ void main() {
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     await _settleRange(t);
     // A second real-time settle: the answer is rendered one frame after the

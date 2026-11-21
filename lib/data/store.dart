@@ -8,6 +8,7 @@ import 'package:shamsi_date/shamsi_date.dart';
 import 'package:sqflite/sqflite.dart';
 import '../domain/market.dart';
 import '../domain/row_facts.dart';
+import 'scanner_api.dart';
 
 /// Derived, payload-addressed index of the local archive (schema 5).
 ///
@@ -38,6 +39,27 @@ const _rangeIndexSchema = [
   'CREATE INDEX IF NOT EXISTS range_index_category ON range_index(category, market_at)',
   'CREATE INDEX IF NOT EXISTS range_index_market ON range_index(market_at)',
   'CREATE INDEX IF NOT EXISTS range_index_offer ON range_index(endpoint, id, fetched_at)',
+];
+
+/// The online scanner archive (schema 9).
+///
+/// `scanner_sources` is the registry هوش جستجوگر ۲ grows: the app keeps what it
+/// has seen so a fetch can report which links are new. `scanner_items` is the
+/// extracted knowledge, one row per item, only `attribute = price`.
+const _scannerSchema = [
+  'CREATE TABLE IF NOT EXISTS scanner_sources ('
+      'url TEXT PRIMARY KEY, domain TEXT NOT NULL, kind TEXT NOT NULL, '
+      'origin TEXT NOT NULL, state TEXT NOT NULL, name TEXT, '
+      'readable INTEGER NOT NULL DEFAULT 1, part INTEGER NOT NULL DEFAULT 0, '
+      'first_seen TEXT NOT NULL, last_seen TEXT NOT NULL)',
+  'CREATE INDEX IF NOT EXISTS scanner_sources_domain ON scanner_sources(domain)',
+  'CREATE TABLE IF NOT EXISTS scanner_items ('
+      'id TEXT PRIMARY KEY, topic TEXT NOT NULL, kind TEXT NOT NULL, '
+      'claim TEXT NOT NULL, url TEXT NOT NULL DEFAULT \'\', '
+      'domain TEXT NOT NULL DEFAULT \'\', confidence REAL NOT NULL DEFAULT 0, '
+      'attribute TEXT NOT NULL DEFAULT \'\', lang TEXT NOT NULL DEFAULT \'\', '
+      'verified_at INTEGER NOT NULL DEFAULT 0, fetched_at TEXT NOT NULL)',
+  'CREATE INDEX IF NOT EXISTS scanner_items_topic ON scanner_items(topic, kind)',
 ];
 
 class MarketStore {
@@ -72,7 +94,7 @@ class MarketStore {
     final p = dbPath ?? path.join(await getDatabasesPath(), 'ironpin.db');
     final db = await f.openDatabase(p,
         options: OpenDatabaseOptions(
-            version: 8,
+            version: 9,
             onConfigure: _configureConnection,
             onCreate: (db, version) async {
               await db.execute(
@@ -94,6 +116,9 @@ class MarketStore {
               await db.execute(
                   'CREATE TABLE refresh_lock (id INTEGER PRIMARY KEY CHECK(id=1), owner TEXT NOT NULL, expires_at INTEGER NOT NULL)');
               for (final sql in _rangeIndexSchema) {
+                await db.execute(sql);
+              }
+              for (final sql in _scannerSchema) {
                 await db.execute(sql);
               }
             },
@@ -191,6 +216,14 @@ class MarketStore {
               if (oldVersion < 8) {
                 await db.execute(
                     'CREATE TABLE IF NOT EXISTS refresh_lock (id INTEGER PRIMARY KEY CHECK(id=1), owner TEXT NOT NULL, expires_at INTEGER NOT NULL)');
+              }
+              if (oldVersion < 9) {
+                // Schema 9 adds the online scanner archive: the source registry
+                // the scanner grows, and the extracted knowledge items. Both are
+                // reads of a public database; nothing here touches prices.
+                for (final sql in _scannerSchema) {
+                  await db.execute(sql);
+                }
               }
             }));
     await _ensureAuxSchema(db);
@@ -1042,6 +1075,120 @@ class MarketStore {
         clearOld ? 'old_history_cleared' : 'history_kept',
         {'deleted': deleted, 'month': retentionMonth(now)});
     return deleted;
+  }
+
+  // --- online scanner archive (schema 9) -----------------------------------
+
+  /// Every stored scanner source, keyed by url. The controller compares a fetch
+  /// against this map to name the links هوش جستجوگر ۲ added since last time.
+  Future<Map<String, Map<String, Object?>>> scannerSourceRows() async => {
+        for (final r in await db.query('scanner_sources'))
+          r['url'] as String: r,
+      };
+
+  /// Writes the fetched registry, keeping the first time each url was seen.
+  /// Returns the urls that were not stored before — the new links.
+  Future<List<String>> scannerSaveSources(
+      List<ScannerSource> sources, DateTime now) async {
+    if (sources.isEmpty) return const [];
+    final existing = await scannerSourceRows();
+    final stamp = now.toUtc().toIso8601String();
+    final fresh = <String>[];
+    final batch = db.batch();
+    for (final s in sources) {
+      final previous = existing[s.url];
+      final firstSeen = previous == null
+          ? stamp
+          : (previous['first_seen'] as String? ?? stamp);
+      if (previous == null) fresh.add(s.url);
+      batch.insert('scanner_sources', s.toRow(firstSeen, stamp),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+    return fresh;
+  }
+
+  Future<int> scannerSourceCount() async => Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM scanner_sources')) ??
+      0;
+
+  /// The stored knowledge, newest first, optionally by topic and kind.
+  Future<List<ScannerItem>> scannerItems(
+      {String? topic, String? kind, int limit = 200, int offset = 0}) async {
+    final where = [
+      if (topic != null) 'topic=?',
+      if (kind != null) 'kind=?',
+    ].join(' AND ');
+    final rows = await db.query('scanner_items',
+        where: where.isEmpty ? null : where,
+        whereArgs: [
+          if (topic != null) topic,
+          if (kind != null) kind,
+        ],
+        orderBy: 'verified_at DESC',
+        limit: limit,
+        offset: offset);
+    return [
+      for (final r in rows)
+        ScannerItem(
+            id: r['id'] as String,
+            scanId: '',
+            topic: r['topic'] as String,
+            claim: r['claim'] as String,
+            url: r['url'] as String? ?? '',
+            domain: r['domain'] as String? ?? '',
+            kind: r['kind'] as String,
+            category: '',
+            attribute: r['attribute'] as String? ?? '',
+            layer: '',
+            lang: r['lang'] as String? ?? '',
+            confidence: (r['confidence'] as num?)?.toDouble() ?? 0,
+            ttlDays: 0,
+            tokens: 0,
+            lastVerifiedAt: DateTime.fromMillisecondsSinceEpoch(
+                (r['verified_at'] as int?) ?? 0),
+            tags: const [])
+    ];
+  }
+
+  /// How many items each topic holds, with the split between `fact` and
+  /// `chunk` — the two shapes the scanner extracts.
+  Future<List<Map<String, Object?>>> scannerTopics() async => await db
+      .rawQuery('SELECT topic, COUNT(*) AS total, '
+          'SUM(CASE WHEN kind=\'fact\' THEN 1 ELSE 0 END) AS facts, '
+          'SUM(CASE WHEN kind=\'chunk\' THEN 1 ELSE 0 END) AS chunks, '
+          'MAX(verified_at) AS newest '
+          'FROM scanner_items GROUP BY topic ORDER BY total DESC');
+
+  Future<int> scannerItemCount() async => Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM scanner_items')) ??
+      0;
+
+  /// Writes only what changed since the last fetch. The whole dump is read to
+  /// know that, but a row is rewritten only when its text is new or different.
+  Future<int> scannerSaveItems(List<ScannerItem> items, DateTime now) async {
+    if (items.isEmpty) return 0;
+    final stamp = now.toUtc().toIso8601String();
+    final existing = <String, String>{};
+    for (final chunk in _chunks(items.map((e) => e.id).toList())) {
+      final rows = await db.query('scanner_items',
+          columns: ['id', 'claim'],
+          where: 'id IN (${List.filled(chunk.length, '?').join(',')})',
+          whereArgs: chunk);
+      for (final r in rows) {
+        existing[r['id'] as String] = r['claim'] as String;
+      }
+    }
+    final batch = db.batch();
+    var changed = 0;
+    for (final i in items) {
+      if (existing[i.id] == i.claim) continue;
+      changed++;
+      batch.insert('scanner_items', i.toRow(stamp),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    if (changed > 0) await batch.commit(noResult: true);
+    return changed;
   }
 
   Future<int> historyCount() async =>

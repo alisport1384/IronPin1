@@ -83,6 +83,8 @@ void main() {
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     await _settleRange(t);
 
@@ -111,6 +113,8 @@ void main() {
     final show = find.textContaining('نمایش کاندیدها');
     await t.scrollUntilVisible(show, 300,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(show);
+    await t.pumpAndSettle();
     await t.tap(show);
     await t.pumpAndSettle();
     // Expanding the candidates of the same product adds exactly one more

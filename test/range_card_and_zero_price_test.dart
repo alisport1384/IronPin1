@@ -78,6 +78,8 @@ void main() {
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     await _settle(t);
     expect(find.textContaining('محاسبه کامل نشد'), findsNothing,

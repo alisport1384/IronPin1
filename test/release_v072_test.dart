@@ -347,6 +347,8 @@ void main() {
         find.widgetWithText(TextField, 'عرض تسمه (میلی‌متر)'), findsOneWidget);
     await t.scrollUntilVisible(find.text('محاسبه'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('محاسبه'));
+    await t.pumpAndSettle();
     await t.tap(find.text('محاسبه'));
     await t.pumpAndSettle();
     expect(find.text('۱۱٫۷۷۵ کیلوگرم'), findsOneWidget);
@@ -367,6 +369,8 @@ void main() {
       await t.pumpAndSettle();
       await t.scrollUntilVisible(find.text('محاسبه'), 250,
           scrollable: find.byType(Scrollable).first);
+      await t.ensureVisible(find.text('محاسبه'));
+      await t.pumpAndSettle();
       await t.tap(find.text('محاسبه'));
       await t.pumpAndSettle();
       expect(find.text(spec.last), findsOneWidget);

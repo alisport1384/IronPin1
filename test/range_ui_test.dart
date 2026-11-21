@@ -151,11 +151,17 @@ void main() {
     await t.pumpAndSettle();
     // The title names the window the tab is really using (one month by default).
     expect(find.textContaining('رنج‌گیری'), findsOneWidget);
-    await t.tap(find.byType(ListTile).first);
-    await t.pumpAndSettle();
     expect(find.text('۱۵۰ تومان / کیلوگرم'), findsNothing);
-    await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
-        scrollable: find.byType(Scrollable).first);
+    // The surcharge card adds height above the confirmation button. A tall
+    // viewport keeps the whole form (button included) built, so the tap below
+    // never hits a lazily-built row.
+    t.view.physicalSize = const Size(360, 2600);
+    t.view.devicePixelRatio = 1;
+    await t.pumpAndSettle();
+    // The surcharge card is a SwitchListTile and now precedes the product
+    // picker, so the product must be picked by its own title.
+    await t.tap(find.text('ورق / پلیت / صفحه فولادی'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     // Real isolate and I/O time does not advance with the fake clock: wait
     // for the confirmed answer with bounded pumps instead of one fixed sleep.

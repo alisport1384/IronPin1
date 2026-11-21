@@ -93,17 +93,30 @@ class _FinderPanelState extends State<FinderPanel> {
           'فقط منبعی که دست‌کم یک ردیف معتبر بدهد و تکراری نباشد به اتصال‌ها افزوده و روشن می‌شود. از چند موتور جستجوی مستقل به نوبت استفاده می‌شود تا در دسترس‌نبودن یکی کار را متوقف نکند. '
           'فقط صفحه‌های عمومی خوانده می‌شوند؛ ورود، کلید یا دورزدن محدودیت در کار نیست.',
           style: TextStyle(fontSize: 11, color: muted, height: 1.8)),
-      SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('جستجوی خودکار منابع تازه'),
-          subtitle: const Text(
-              'با خاموش‌کردن، فهرست‌ها و منابع پذیرفته‌شده سر جایشان می‌مانند',
-              style: TextStyle(fontSize: 11)),
-          value: c.finderEnabled,
-          onChanged: (v) async {
-            await c.setFinderEnabled(v);
-            if (mounted) setState(() {});
-          }),
+      // The switch itself lives in the online-scanner panel (it is one of the
+      // two keys there); here the panel only states where جستجوگر ۲ stands.
+      Container(
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+              color: (c.finderEnabled ? teal : muted).withOpacity(.08),
+              borderRadius: BorderRadius.circular(10)),
+          child: Row(children: [
+            Icon(
+                c.finderEnabled
+                    ? Icons.pause_circle_outline
+                    : Icons.play_circle_outline,
+                size: 19,
+                color: c.finderEnabled ? teal : muted),
+            const SizedBox(width: 9),
+            Expanded(
+                child: Text(
+                    c.finderEnabled
+                        ? 'هوش جستجوگر ۲ روشن است؛ کلید آن در بخش «اسکنر آنلاین» زبانهٔ اطلاعات است.'
+                        : 'هوش جستجوگر ۲ خاموش است؛ کلید آن در بخش «اسکنر آنلاین» زبانهٔ اطلاعات است.',
+                    style:
+                        const TextStyle(fontSize: 11, height: 1.7))),
+          ])),
       Text(
           faDigits('دور ${s.round + 1} • پرسش باقی‌مانده: $questions • '
               'در صف بررسی: $unread • صفحه خوانده‌شده: ${s.pages} • '

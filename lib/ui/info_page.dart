@@ -5,6 +5,7 @@ import '../data/sources.dart';
 import '../domain/market.dart';
 import 'common.dart';
 import 'finder_panel.dart';
+import 'scanner_panel.dart';
 import 'prices_page.dart';
 import 'backup_panel.dart';
 
@@ -223,6 +224,7 @@ class _InfoPageState extends State<InfoPage> {
                     : 'تصاویر خوانده‌شده در این اجرا: ${fmt(c.photosScanned)}'
                         '${c.photoReport.isEmpty ? '' : ' • ${c.photoReport}'}')),
           ]),
+      ScannerPanel(c: c),
       SwitchListTile(
           title: const Text('ثبت لاگ محصولات و منابع'),
           subtitle:
@@ -330,101 +332,121 @@ class _InfoPageState extends State<InfoPage> {
           'همه روشن و همه خاموش روی همهٔ منابع همین فهرست اعمال می‌شود؛ منابع ثبت‌شده، منابع افزوده‌شده و یافته‌های هوش جستجوگر ۲ را با هم شامل می‌شود و جستجو/فیلتر شهر روی این دو دکمه اثری ندارد.',
           style: TextStyle(fontSize: 10, color: muted, height: 1.8)),
       const SizedBox(height: 6),
-      // Sources that share one name — the same seller on two networks — are
-      // one card: the name is written once and each route keeps its own
-      // switch, status and link underneath it.
-      for (final entry in grouped.entries)
-        Card(
-            margin: const EdgeInsets.only(bottom: 3),
-            child: _LazyExpansionTile(
-                storageKey: 'source:${entry.key}',
-                dense: true,
-                visualDensity: const VisualDensity(vertical: -4),
-                tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                leading: Icon(Icons.circle,
-                    size: 8,
-                    color: entry.value.every((e) => c.enabled.contains(e.id))
-                        ? teal
-                        : entry.value.any((e) => c.enabled.contains(e.id))
-                            ? Colors.orange
-                            : muted),
-                title: Text(entry.key,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12)),
-                subtitle: entry.value.length == 1
-                    ? null
-                    : Text('${fmt(entry.value.length)} منبع با همین نام',
-                        style: const TextStyle(fontSize: 10, color: muted)),
-                childrenPadding: const EdgeInsets.symmetric(horizontal: 12),
-                builder: () => [
-                  for (final e in entry.value) ...[
-                    if (entry.value.length > 1)
-                      Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(e.url,
-                              style:
-                                  const TextStyle(fontSize: 10, color: teal))),
-                    SwitchListTile(
-                        dense: true,
-                        title: const Text('دریافت از این منبع',
-                            style: TextStyle(fontSize: 11)),
-                        value: c.enabled.contains(e.id),
-                        onChanged:
-                            c.busy ? null : (v) => c.setEnabled(e.id, v)),
-                    Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                            '${c.states[e.id]?['message'] ?? 'هنوز آزموده نشده'}',
-                            style: const TextStyle(fontSize: 11))),
-                    if (c.states[e.id]?['success_at'] != null)
-                      Text(
-                          'آخرین دریافت موفق: ${dateLabel(DateTime.tryParse('${c.states[e.id]!['success_at']}'))}',
-                          style: const TextStyle(fontSize: 10, color: muted)),
-                    Text('شهر دفتر: ${e.sellerCity}',
-                        style: const TextStyle(fontSize: 10, color: muted)),
-                    TextButton(
-                        onPressed: () => openLink(context, e.url),
-                        child: const Text('منبع اصلی',
-                            style: TextStyle(fontSize: 11))),
-                  ]
-                ])),
+      // منابع «اطلاعات» زیر منو می‌روند: فهرست بلندی‌اند و فقط وقتی خودم بازشان
+      // کنم باید دیده شوند. Sources that share one name — the same seller on two
+      // networks — are one card: the name is written once and each route keeps
+      // its own switch, status and link underneath it.
+      _LazyExpansionTile(
+          dense: true,
+          title: Text('فهرست منابع • ${fmt(grouped.length)} نام',
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.bold)),
+          subtitle: const Text(
+              'زیر منو؛ هر نام یک کارت است و هر مسیر کلید خودش را دارد',
+              style: TextStyle(fontSize: 11, color: muted)),
+          childrenPadding: const EdgeInsets.symmetric(horizontal: 12),
+          builder: () => [
+            for (final entry in grouped.entries)
+              Card(
+                  margin: const EdgeInsets.only(bottom: 3),
+                  child: _LazyExpansionTile(
+                      storageKey: 'source:${entry.key}',
+                      dense: true,
+                      visualDensity: const VisualDensity(vertical: -4),
+                      tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                      leading: Icon(Icons.circle,
+                          size: 8,
+                          color: entry.value.every((e) => c.enabled.contains(e.id))
+                              ? teal
+                              : entry.value.any((e) => c.enabled.contains(e.id))
+                                  ? Colors.orange
+                                  : muted),
+                      title: Text(entry.key,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12)),
+                      subtitle: entry.value.length == 1
+                          ? null
+                          : Text('${fmt(entry.value.length)} منبع با همین نام',
+                              style: const TextStyle(fontSize: 10, color: muted)),
+                      childrenPadding: const EdgeInsets.symmetric(horizontal: 12),
+                      builder: () => [
+                        for (final e in entry.value) ...[
+                          if (entry.value.length > 1)
+                            Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(e.url,
+                                    style:
+                                        const TextStyle(fontSize: 10, color: teal))),
+                          SwitchListTile(
+                              dense: true,
+                              title: const Text('دریافت از این منبع',
+                                  style: TextStyle(fontSize: 11)),
+                              value: c.enabled.contains(e.id),
+                              onChanged:
+                                  c.busy ? null : (v) => c.setEnabled(e.id, v)),
+                          Align(
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                  '${c.states[e.id]?['message'] ?? 'هنوز آزموده نشده'}',
+                                  style: const TextStyle(fontSize: 11))),
+                          if (c.states[e.id]?['success_at'] != null)
+                            Text(
+                                'آخرین دریافت موفق: ${dateLabel(DateTime.tryParse('${c.states[e.id]!['success_at']}'))}',
+                                style: const TextStyle(fontSize: 10, color: muted)),
+                          Text('شهر دفتر: ${e.sellerCity}',
+                              style: const TextStyle(fontSize: 10, color: muted)),
+                          TextButton(
+                              onPressed: () => openLink(context, e.url),
+                              child: const Text('منبع اصلی',
+                                  style: TextStyle(fontSize: 11))),
+                        ]
+                      ])),
+          ]),
       const SizedBox(height: 25),
-      const Text('فروشندگان بر اساس شهر',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-      infoBox('دفتر فروش ≠ محل تولید',
-          'فهرست شهرهای ایران قابل جستجو است؛ وضعیت هر مدخل، نشانی رسمی را از خوداظهاری کانال یا سرنخ احرازنشده جدا می‌کند. برای شهر بدون داده، فروشنده یا قیمت فرضی تولید نمی‌شود. شکفته به عنوان تولیدکننده مشهد معرفی شده، نه دفتر فروش احراز‌شده.'),
-      const SizedBox(height: 12),
-      if (offices.isEmpty)
-        infoBox('دفتر تاییدشده‌ای در این فیلتر ثبت نشده',
-            'نبود داده، به معنی نبود فروشنده در شهر نیست. منابع با شهر نامشخص در فهرست عمومی منابع حفظ شده‌اند.'),
-      for (final s in offices)
-        Card(
-            margin: const EdgeInsets.only(bottom: 3),
-            child: _LazyExpansionTile(
-                dense: true,
-                visualDensity: const VisualDensity(vertical: -4),
-                title: Text('${s['name']} • ${s['city']}',
-                    style: const TextStyle(fontSize: 12)),
-                childrenPadding: const EdgeInsets.symmetric(horizontal: 12),
-                builder: () => [
-                  Text(s['address']!,
-                      style: const TextStyle(fontSize: 11, height: 1.7)),
-                  Text(s['status']!,
-                      style: const TextStyle(fontSize: 10, color: muted)),
-                  Wrap(children: [
-                    TextButton.icon(
-                        onPressed: () => openLink(context, s['url']!),
-                        icon: const Icon(Icons.language, size: 16),
-                        label: const Text('سایت')),
-                    if (s['phone']!.isNotEmpty)
-                      TextButton.icon(
-                          onPressed: () =>
-                              openLink(context, 'tel:${s['phone']}'),
-                          icon: const Icon(Icons.phone_outlined, size: 16),
-                          label: Text(s['phone']!))
-                  ])
-                ])),
+      // دفاتر فروش هم زیر منو می‌روند: فهرست شهرها بلند است و فقط وقتی خودم
+      // بازش کنم باید صفحه را بلند کند.
+      _LazyExpansionTile(
+          storageKey: 'info:offices',
+          dense: true,
+          title: const Text('فروشندگان بر اساس شهر',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          childrenPadding: const EdgeInsets.symmetric(horizontal: 12),
+          builder: () => [
+            infoBox('دفتر فروش ≠ محل تولید',
+                'فهرست شهرهای ایران قابل جستجو است؛ وضعیت هر مدخل، نشانی رسمی را از خوداظهاری کانال یا سرنخ احرازنشده جدا می‌کند. برای شهر بدون داده، فروشنده یا قیمت فرضی تولید نمی‌شود. شکفته به عنوان تولیدکننده مشهد معرفی شده، نه دفتر فروش احراز‌شده.'),
+            const SizedBox(height: 12),
+            if (offices.isEmpty)
+              infoBox('دفتر تاییدشده‌ای در این فیلتر ثبت نشده',
+                  'نبود داده، به معنی نبود فروشنده در شهر نیست. منابع با شهر نامشخص در فهرست عمومی منابع حفظ شده‌اند.'),
+            for (final s in offices)
+              Card(
+                  margin: const EdgeInsets.only(bottom: 3),
+                  child: _LazyExpansionTile(
+                      dense: true,
+                      visualDensity: const VisualDensity(vertical: -4),
+                      title: Text('${s['name']} • ${s['city']}',
+                          style: const TextStyle(fontSize: 12)),
+                      childrenPadding: const EdgeInsets.symmetric(horizontal: 12),
+                      builder: () => [
+                        Text(s['address']!,
+                            style: const TextStyle(fontSize: 11, height: 1.7)),
+                        Text(s['status']!,
+                            style: const TextStyle(fontSize: 10, color: muted)),
+                        Wrap(children: [
+                          TextButton.icon(
+                              onPressed: () => openLink(context, s['url']!),
+                              icon: const Icon(Icons.language, size: 16),
+                              label: const Text('سایت')),
+                          if (s['phone']!.isNotEmpty)
+                            TextButton.icon(
+                                onPressed: () =>
+                                    openLink(context, 'tel:${s['phone']}'),
+                                icon: const Icon(Icons.phone_outlined, size: 16),
+                                label: Text(s['phone']!))
+                        ])
+                      ])),
+          ]),
       const SizedBox(height: 24),
       Text('فهرست تحقیق منابع • ${fmt(sites.length)} مدخل',
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),

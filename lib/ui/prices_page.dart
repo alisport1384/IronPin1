@@ -126,6 +126,7 @@ class _PricesPageState extends State<PricesPage> {
           child: windowChip('بازه زمانی', c.pricesDays, (v) {
             unawaited(c.setTabDays('prices', v));
           }, inherit: true, inherited: c.discoveryDays)),
+      SurchargeControl(c: c),
       Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(children: [
@@ -220,6 +221,7 @@ class _PricesPageState extends State<PricesPage> {
                         key: ValueKey('${q.id}:$i'),
                         q: q,
                         basis: c.filter.basis,
+                        factor: c.priceSurchargeFactor,
                         onChart: () => widget.onChart(q));
                     if (dayHeader == null) return card;
                     return Column(
@@ -253,10 +255,10 @@ double? _visibleRawAmount(Quote q) {
   return n != null && n.isFinite && n > 0 ? n : null;
 }
 
-String _offerAmount(Quote q, String basis) {
+String _offerAmount(Quote q, String basis, {double factor = 1}) {
   final value = q.priceFor(basis) ?? _visibleRawAmount(q);
   return value != null
-      ? fmt(toman(value, q.currency) ?? value, decimals: 2)
+      ? fmt((toman(value, q.currency) ?? value) * factor, decimals: 2)
       : faDigits(q.details['مبلغ استخراج‌شده'] ?? 'نیازمند بررسی');
 }
 
@@ -271,9 +273,16 @@ String _offerUnit(Quote q, String basis) {
 class QuoteCard extends StatefulWidget {
   final Quote q;
   final String basis;
+
+  /// The optional surcharge factor; 1 means the announced price is shown as is.
+  final double factor;
   final VoidCallback onChart;
   const QuoteCard(
-      {super.key, required this.q, required this.basis, required this.onChart});
+      {super.key,
+      required this.q,
+      required this.basis,
+      this.factor = 1,
+      required this.onChart});
   @override
   State<QuoteCard> createState() => _QuoteCardState();
 }
@@ -321,7 +330,8 @@ class _QuoteCardState extends State<QuoteCard> {
                           children: [
                         FittedBox(
                             fit: BoxFit.scaleDown,
-                            child: Text(_offerAmount(q, basis),
+                            child: Text(_offerAmount(q, basis,
+                                factor: widget.factor),
                                 style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
@@ -366,7 +376,7 @@ class _QuoteCardState extends State<QuoteCard> {
                             style:
                                 const TextStyle(fontSize: 10, color: muted))),
                     const SizedBox(height: 6),
-                    UnitPrices(q: q),
+                    UnitPrices(q: q, factor: widget.factor),
                     Align(
                         alignment: Alignment.centerRight,
                         child: Text(q.status,
@@ -380,7 +390,8 @@ class _QuoteCardState extends State<QuoteCard> {
                                   'offer',
                                   'details_opened',
                                   {'category': q.category}));
-                              showQuoteDetails(context, q, widget.onChart);
+                              showQuoteDetails(context, q, widget.onChart,
+                                  factor: widget.factor);
                             },
                             icon: const Icon(Icons.chevron_left, size: 18),
                             label: const Text('جزئیات بیشتر',
@@ -391,7 +402,10 @@ class _QuoteCardState extends State<QuoteCard> {
 
 class UnitPrices extends StatelessWidget {
   final Quote q;
-  const UnitPrices({super.key, required this.q});
+
+  /// The optional surcharge factor; 1 means the announced price is shown as is.
+  final double factor;
+  const UnitPrices({super.key, required this.q, this.factor = 1});
   @override
   Widget build(BuildContext context) {
     if (q.priceFor('original') == null) return const SizedBox.shrink();
@@ -426,7 +440,7 @@ class UnitPrices extends StatelessWidget {
                             Text(
                                 q.priceFor(unit) == null
                                     ? 'نامشخص؛ داده کافی نیست'
-                                    : '${fmt(q.tomanFor(unit) ?? q.priceFor(unit), decimals: 2)} ${q.tomanFor(unit) == null ? q.currency : 'تومان'}',
+                                    : '${fmt((q.tomanFor(unit) ?? q.priceFor(unit))! * factor, decimals: 2)} ${q.tomanFor(unit) == null ? q.currency : 'تومان'}',
                                 style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
@@ -437,7 +451,7 @@ class UnitPrices extends StatelessWidget {
               ])),
       if (q.tomanFor('original') != null)
         Text(
-            '${moneyWords(q.tomanFor('original')!)}؛ نوشتار به نزدیک‌ترین تومان',
+            '${moneyWords(q.tomanFor('original')! * factor)}؛ نوشتار به نزدیک‌ترین تومان',
             style: const TextStyle(fontSize: 11)),
       if (q.currency == 'ریال')
         Text(
@@ -454,7 +468,8 @@ class UnitPrices extends StatelessWidget {
   }
 }
 
-void showQuoteDetails(BuildContext context, Quote q, VoidCallback onChart) {
+void showQuoteDetails(BuildContext context, Quote q, VoidCallback onChart,
+    {double factor = 1}) {
   showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -468,7 +483,7 @@ void showQuoteDetails(BuildContext context, Quote q, VoidCallback onChart) {
                   controller: scroll,
                   padding: const EdgeInsets.all(22),
                   children: [
-                    UnitPrices(q: q),
+                    UnitPrices(q: q, factor: factor),
                     const SizedBox(height: 12),
                     Text(faDigits(q.title),
                         style: const TextStyle(
@@ -477,7 +492,7 @@ void showQuoteDetails(BuildContext context, Quote q, VoidCallback onChart) {
                             height: 1.7)),
                     const SizedBox(height: 16),
                     Text(
-                        '${_offerAmount(q, 'original')} ${_offerUnit(q, 'original')}',
+                        '${_offerAmount(q, 'original', factor: factor)} ${_offerUnit(q, 'original')}',
                         style: const TextStyle(
                             fontSize: 24,
                             color: teal,

@@ -43,6 +43,8 @@ void main() {
     final off = find.text('همه خاموش');
     await t.scrollUntilVisible(off, 250,
         scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+    await t.ensureVisible(off);
+    await t.pumpAndSettle();
     await t.tap(off);
     await t.pumpAndSettle();
     await drain();
@@ -65,10 +67,18 @@ void main() {
         jsonDecode(await t.runAsync(() async => (await store.setting('enabled')) ?? '') ?? '') as List;
     expect(storedOn.toSet(), allIds);
 
-    // Sources sharing a name are one card, named once, with both routes.
+    // Sources sharing a name are one card, named once, with both routes. The
+    // cards sit in the page's closed route-list section, so open it first.
+    final listTile = find.textContaining('فهرست منابع');
+    await t.scrollUntilVisible(listTile, 250,
+        scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+    await t.ensureVisible(listTile);
+    await t.pumpAndSettle();
+    await t.tap(listTile);
+    await t.pumpAndSettle();
     final sameName = find.text('بنیان فولاد قوام مشهد');
-    await t.scrollUntilVisible(sameName, 300,
-        scrollable: find.byType(Scrollable).first, maxScrolls: 100);
+    await t.ensureVisible(sameName);
+    await t.pumpAndSettle();
     expect(sameName, findsOneWidget,
         reason: 'same-named sources must be displayed under one name');
     await t.tap(sameName);

@@ -156,8 +156,9 @@ void main() {
       store = await MarketStore.open(dbPath: path, factory: databaseFactoryFfi);
       expect((await store.latest()).single.thicknessLabel, '8');
       // Schema 4 adds the derived range index and schema 6 its `amount_raw`
-      // column; schema 7 adds the endpoint index and schema 8 the refresh lease.
-      expect(await store.db.getVersion(), 8);
+      // column; schema 7 adds the endpoint index, schema 8 the refresh lease,
+      // and schema 9 the online scanner tables.
+      expect(await store.db.getVersion(), 9);
       final c = MarketController(store);
       await c.init();
       expect(c.quotes.single.id, 'row-1');

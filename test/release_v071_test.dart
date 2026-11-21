@@ -354,10 +354,14 @@ void main() {
         home: Scaffold(
             body: AnimatedBuilder(
                 animation: c, builder: (_, __) => RangePage(c: c)))));
-    await t.tap(find.byType(ListTile).first);
+    // The surcharge card is now the first SwitchListTile on the range
+    // page; pick the product by its title instead.
+    await t.tap(find.text('ورق / پلیت / صفحه فولادی'));
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     // Refresh revisions keep arriving while the confirmed job is still running.
     await t.runAsync(() async {
@@ -426,10 +430,14 @@ void main() {
     final c = MarketController(store!);
     await t.pumpWidget(MaterialApp(
         home: Scaffold(body: RangePage(c: c, readTimeout: Duration.zero))));
-    await t.tap(find.byType(ListTile).first);
+    // The surcharge card is now the first SwitchListTile on the range
+    // page; pick the product by its title instead.
+    await t.tap(find.text('ورق / پلیت / صفحه فولادی'));
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('تأیید و نمایش رنج'), 250,
         scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('تأیید و نمایش رنج'));
+    await t.pumpAndSettle();
     await t.tap(find.text('تأیید و نمایش رنج'));
     await _settleRange(t);
     // No deadline error stands between the user and the stored data: the
