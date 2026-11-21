@@ -92,7 +92,7 @@ class PhotoScanner {
     Uint8List bytes;
     try {
       final response = await client
-          .get(Uri.parse(url), headers: {'user-agent': 'IronPin/0.9.14 (public post image)'})
+          .get(Uri.parse(url), headers: {'user-agent': 'IronPin/0.9.15 (public post image)'})
           .timeout(timeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return PhotoRead(url, error: 'تصویر با کد ${response.statusCode} دریافت نشد');

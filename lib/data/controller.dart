@@ -16,6 +16,7 @@ import 'source_finder_io.dart';
 import 'sources.dart';
 import 'store.dart';
 import 'scanner_api.dart';
+import 'scanner_ingest.dart';
 import 'app_logger.dart';
 
 class MarketController extends ChangeNotifier {
@@ -454,6 +455,10 @@ class MarketController extends ChangeNotifier {
   String scannerError = '';
   String scannerLastKnowledgeFetch = '';
   int scannerItemCount = 0, scannerSourceCount = 0;
+
+  /// Rows the ingested knowledge contributed to the archive. They are ordinary
+  /// rows, so this is what the prices, chart and range tabs actually read.
+  int scannerOfferCount = 0;
   List<String> scannerNewSources = const [];
   List<Map<String, Object?>> scannerTopics = const [];
 
@@ -487,6 +492,35 @@ class MarketController extends ChangeNotifier {
         scannerLastKnowledgeFetch = now.toUtc().toIso8601String();
         await store.setSetting(
             'scanner.lastKnowledgeFetch', scannerLastKnowledgeFetch);
+        final dumpVersion = knowledge.generatedAt;
+        // A dump with no version of its own is never "the same": without a
+        // version there is nothing to compare, so it is read again.
+        final sameDump = dumpVersion.isNotEmpty &&
+            dumpVersion == await store.setting('scanner.knowledgeVersion');
+        await store.setSetting('scanner.knowledgeVersion', dumpVersion);
+        // The knowledge becomes archive rows, not just a list to read: the
+        // prices, chart and range tabs read rows, and the range product list
+        // and its index are built from them. Without this step the dump only
+        // filled the information tab.
+        final ingested = sameDump
+            ? await store.activeEndpointCount(ScannerIngest.endpoint)
+            // A new dump is always ingested with the window the tabs read, so
+            // what this read leaves out is what the tabs would hide anyway.
+            : await ScannerIngest(store)
+                .ingest(knowledge, now: now, windowDays: pricesWindow);
+        if (ingested > 0) {
+          // The archive grew: the derived index and every confirmed answer of
+          // the old archive are void, exactly as after a source's own refresh.
+          _indexStale = true;
+          historyRevision++;
+          unawaited(_publishEndpoint(ScannerIngest.endpoint)
+              .catchError((Object _) {}));
+        }
+        await AppLogger.instance.record('scanner', 'knowledge_ingested', {
+          'rows': ingested,
+          'items': knowledge.priceItems.length,
+          'sameDump': sameDump,
+        });
       }
       await AppLogger.instance.record('scanner', 'fetch_complete', {
         'sources': sources.sources.length,
@@ -512,6 +546,8 @@ class MarketController extends ChangeNotifier {
     scannerItemCount = await store.scannerItemCount();
     scannerSourceCount = await store.scannerSourceCount();
     scannerTopics = await store.scannerTopics();
+    scannerOfferCount =
+        await store.activeEndpointCount(ScannerIngest.endpoint);
   }
 
   /// «اسکن بدون سرور»: when on, nothing is read from the scanner server and the
@@ -674,6 +710,7 @@ class MarketController extends ChangeNotifier {
       'scanner.serverless',
       'scanner.newSources',
       'scanner.lastKnowledgeFetch',
+      'scanner.knowledgeVersion',
       'surchargeEnabled',
       'surchargePercent',
     ]);

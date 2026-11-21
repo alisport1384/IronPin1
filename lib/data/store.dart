@@ -1164,6 +1164,23 @@ class MarketStore {
           await db.rawQuery('SELECT COUNT(*) FROM scanner_items')) ??
       0;
 
+  /// Current rows of one endpoint in the archive. The ingested scanner
+  /// knowledge is ordinary archive data, so its size is answered here rather
+  /// than from the scanner tables.
+  Future<int> activeEndpointCount(String endpoint) async =>
+      Sqflite.firstIntValue(await db.rawQuery(
+          'SELECT COUNT(*) FROM latest WHERE active=1 AND endpoint=?',
+          [endpoint])) ??
+      0;
+
+  /// Removes an endpoint's current rows without touching its real history.
+  /// Used when a feed's offers are gone, so the tabs do not keep showing rows
+  /// the source no longer publishes.
+  Future<void> retireEndpoint(String endpoint) async {
+    await db.update('latest', {'active': 0},
+        where: 'endpoint=? AND active=1', whereArgs: [endpoint]);
+  }
+
   /// Writes only what changed since the last fetch. The whole dump is read to
   /// know that, but a row is rewritten only when its text is new or different.
   Future<int> scannerSaveItems(List<ScannerItem> items, DateTime now) async {

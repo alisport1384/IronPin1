@@ -69,7 +69,8 @@ class _ScannerPanelState extends State<ScannerPanel> {
                     Text(
                         faDigits('منابع ذخیره‌شده: ${c.scannerSourceCount}'
                             ' • موارد دانش: ${c.scannerItemCount}'
-                            ' • منابع تازه: ${c.scannerNewSources.length}'),
+                            ' • منابع تازه: ${c.scannerNewSources.length}'
+                            ' • ردیف قیمت در تب‌ها: ${c.scannerOfferCount}'),
                         style: const TextStyle(fontSize: 12)),
                     const SizedBox(height: 4),
                     Text(
